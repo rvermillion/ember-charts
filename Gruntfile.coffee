@@ -18,14 +18,14 @@ module.exports = (grunt) ->
         src: [ "**/*.coffee" ]
         dest: "build/src/"
         ext: ".js"
-      docs:
-        options:
-          bare: true
-        expand: true
-        cwd: "app/"
-        src: [ "**/*.coffee" ]
-        dest: "build/app/"
-        ext: ".js"
+      #docs:
+      #  options:
+      #    bare: true
+      #  expand: true
+      #  cwd: "app/"
+      #  src: [ "**/*.coffee" ]
+      #  dest: "build/app/"
+      #  ext: ".js"
 
     emberTemplates:
       options:

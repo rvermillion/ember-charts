@@ -1,3 +1,5 @@
+#d3 = require 'd3'
+
 Ember.Charts.ChartComponent = Ember.Component.extend(
   Ember.Charts.Colorable, Ember.AddeparMixins.ResizeHandlerMixin,
   templateName: 'chart'
@@ -83,6 +85,15 @@ Ember.Charts.ChartComponent = Ember.Component.extend(
     @get('graphicLeft') + @get('graphicWidth')
   .property 'graphicLeft', 'graphicWidth'
 
+
+  # ----------------------------------------------------------------------------
+  # Make nice formatting and allow users to set the string
+  # ----------------------------------------------------------------------------
+
+  valueFormat: '.2s'
+  formatValue: Ember.computed ->
+    d3.format(@get 'valueFormat')
+  .property 'valueFormat'
 
   # ----------------------------------------------------------------------------
   # Data

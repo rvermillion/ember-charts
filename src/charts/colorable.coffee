@@ -10,12 +10,35 @@ Ember.Charts.Colorable = Ember.Mixin.create
   tint: 0.8
   minimumTint: 0
   maximumTint: 0.66
-  colorScaleType: d3.scale.linear
+  colorMode: "linear"
+  colorPalette: 'category'
+  colorScaleType: Ember.computed ->
+    switch @get 'colorMode'
+      when "linear" then d3.scale.linear
+      when "palette" then d3.scale.ordinal
+      else d3.scale.linear
+  .property 'colorMode'
 
   # colorScale is the end of the color scale pipeline so we rerender on that
   renderVars: ['colorScale']
 
   colorRange: Ember.computed ->
+    switch @get 'colorMode'
+      when "linear"
+        @get 'interpolatedColorRange'
+      when "palette"
+        colorPalette = @get 'colorPalette'
+        switch colorPalette
+          when 'category' then d3.scale.category20c().range()
+          when 'category20b' then d3.scale.category20b().range()
+          when 'category20c' then d3.scale.category20c().range()
+          else
+            scale = d3.scale[colorPalette]
+            if scale then scale().range() else @get 'interpolatedColorRange'
+      else @get 'interpolatedColorRange'
+  .property 'colorMode', 'colorPalette', 'interpolatedColorRange'
+
+  interpolatedColorRange: Ember.computed ->
     seedColor = @get 'selectedSeedColor'
     interpolate = d3.interpolateRgb(seedColor, 'rgb(255,255,255)')
     minTintRGB = interpolate(@get 'minimumTint')
@@ -24,7 +47,9 @@ Ember.Charts.Colorable = Ember.Mixin.create
   .property 'selectedSeedColor', 'minimumTint', 'maximumTint'
 
   colorScale: Ember.computed ->
-    @get('colorScaleType')().range(@get 'colorRange')
+    colorScaleType = @get('colorScaleType')
+    colorScale = colorScaleType()
+    colorScale.range(@get 'colorRange')
   .property 'colorRange', 'colorScaleType'
 
   secondaryMinimumTint: 0.4
@@ -40,7 +65,8 @@ Ember.Charts.Colorable = Ember.Mixin.create
   .property 'selectedSeedColor', 'secondaryMinimumTint', 'secondaryMaximumTint'
 
   secondaryColorScale: Ember.computed ->
-    @get('secondaryColorScaleType')().range(@get 'secondaryColorRange')
+    secondaryColorScaleType = @get('secondaryColorScaleType')
+    secondaryColorScaleType().range(@get 'secondaryColorRange')
   .property 'secondaryColorRange', 'secondaryColorScaleType'
 
   # ----------------------------------------------------------------------------
@@ -66,7 +92,8 @@ Ember.Charts.Colorable = Ember.Mixin.create
       if numColorSeries is 1
         @get('colorRange')[0]
       else
-        @get('colorScale') i / (numColorSeries - 1)
+        @get('colorScale') d.label
+        #i / (numColorSeries - 1)
   .property 'numColorSeries', 'colorRange', 'colorScale'
 
   numSecondaryColorSeries: 1

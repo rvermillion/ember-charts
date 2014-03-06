@@ -1,6 +1,13 @@
 # Creates time series labels that are spaced reasonably.
 # Provides @formattedTime. Depends on @xDomain and @selectedInterval.
 
+findIndex = (ary, cb) ->
+  index = -1
+  length = if ary then ary.length else 0
+  while ++index < length
+    return index if cb(ary[index], index)
+  return -1
+
 Ember.Charts.TimeSeriesLabeler = Ember.Mixin.create
 
   # Interval for ticks on time axis can be:
@@ -38,8 +45,8 @@ Ember.Charts.TimeSeriesLabeler = Ember.Mixin.create
     # Returns the difference between where the second labelled value
     # occurs in the unlabelled array and where the first occurs - e.g. in
     # the above example 3 - 1 - 1 => 1 subdivision tick.
-    secondIndex = _.findIndex(allTicks, findTick(labelledTicks[1]))
-    firstIndex = _.findIndex(allTicks, findTick(labelledTicks[0]))
+    secondIndex = findIndex(allTicks, findTick(labelledTicks[1]))
+    firstIndex = findIndex(allTicks, findTick(labelledTicks[0]))
     secondIndex - firstIndex - 1
   .property 'xDomain', 'selectedInterval'
 

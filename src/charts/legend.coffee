@@ -1,3 +1,7 @@
+
+isFunction = (f) ->
+  typeof f is "function"
+
 Ember.Charts.Legend = Ember.Mixin.create
 
   # ----------------------------------------------------------------------------
@@ -23,7 +27,7 @@ Ember.Charts.Legend = Ember.Mixin.create
   # ----------------------------------------------------------------------------
 
   # Outside bounds of legend
-  legendWidth: Ember.computed.alias 'width'
+  legendWidth: Ember.computed.defaultTo 'width'
 
   legendHeight: Ember.computed ->
     @get('numLegendRows') * @get('legendItemHeight')
@@ -109,12 +113,12 @@ Ember.Charts.Legend = Ember.Mixin.create
           .type(d.icon(d, i))
           .size(Math.pow(iconRadius, 2))(d,i)
     fill: (d, i) ->
-      if _.isFunction d.fill then d.fill(d, i) else d.fill
+      if isFunction d.fill then d.fill(d, i) else d.fill
     stroke: (d, i) ->
-      if _.isFunction d.stroke then d.stroke(d, i) else d.stroke
+      if isFunction d.stroke then d.stroke(d, i) else d.stroke
     'stroke-width': (d) ->
       return 1.5 unless d.width
-      if _.isFunction d.width then d.width(d, i) else d.width
+      if isFunction d.width then d.width(d, i) else d.width
     'stroke-dasharray': (d) ->
       return '2,2' if d.dotted
   .property 'legendIconRadius', 'legendItemHeight'

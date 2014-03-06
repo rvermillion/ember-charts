@@ -1,7 +1,8 @@
 {
-  "name": "addepar-bootstrap",
+  "name": "ember-charts",
   "version": "0.0.1",
-  "main": "Gruntfile.js",
+  "main": "dist/ember-charts.js",
+  "browserify": "./index-browserify.js",
   "scripts": {
     "test": "grunt"
   },

@@ -8,7 +8,6 @@ Ember.Charts.VerticalBarComponent = Ember.Charts.ChartComponent.extend(
   # ----------------------------------------------------------------------------
 
   # Getters for formatting human-readable labels from provided data
-  formatValue: d3.format('.2s')
   formatValueLong: d3.format(',.r')
 
   # Data without group will be merged into a group with this name
@@ -71,15 +70,18 @@ Ember.Charts.VerticalBarComponent = Ember.Charts.ChartComponent.extend(
   finishedData: Ember.computed ->
     if @get('isGrouped')
       return [] if Ember.isEmpty @get('groupedData')
-      for groupName, values of @get('groupedData')
-        y0 = 0
+      groupedData = @get('groupedData')
+      groups = d3.keys groupedData
+      y0 = 0
+      for g in groups.sort(d3.ascending)
+        values = groupedData[g]
         stackedValues = for d in values
           y0: y0
           y1: y0 += Math.max(d.value, 0)
           value: d.value
-          group: d.group
+          group: g
           label: d.label
-        group: groupName
+        group: g
         values: values
         stackedValues: stackedValues
         totalValue: y0
@@ -142,11 +144,12 @@ Ember.Charts.VerticalBarComponent = Ember.Charts.ChartComponent.extend(
   # Vertical position/length of each bar and its value
   yDomain: Ember.computed ->
     finishedData = @get 'finishedData'
+    accessor = (dd) -> dd.value
 
     minOfGroups = d3.min finishedData, (d) ->
-      _.min d.values.map((dd) -> dd.value)
+      d3.min d.values, accessor
     maxOfGroups = d3.max finishedData, (d) ->
-      _.max d.values.map((dd) -> dd.value)
+      d3.max d.values, accessor
     maxOfStacks = d3.max finishedData, (d) -> d.totalValue
     # minOfStacks is always zero since we do not compute negative stacks
     minOfStacks = d3.min finishedData, (d) -> 0
@@ -177,9 +180,11 @@ Ember.Charts.VerticalBarComponent = Ember.Charts.ChartComponent.extend(
   .property 'graphicTop', 'graphicHeight', 'yDomain', 'numYTicks'
 
   individualBarLabels: Ember.computed ->
-    groups = _.values(@get 'groupedData').map (g) ->
-      _.pluck g, 'label'
-    _.uniq _.flatten(groups)
+    labels = d3.set()
+    for groupName, values of @get('groupedData')
+      for v in values
+        labels.add v.label if v && v.label
+    labels.values().sort(d3.ascending)
   .property 'groupedData.@each'
 
   # The range of labels assigned to each group
@@ -247,9 +252,11 @@ Ember.Charts.VerticalBarComponent = Ember.Charts.ChartComponent.extend(
 
   legendItems: Ember.computed ->
     getSeriesColor = @get 'getSeriesColor'
-    @get('individualBarLabels').map (d, i) ->
+    @get('individualBarLabels').map (l, i) ->
+      d =
+        label : l
       color = getSeriesColor(d, i)
-      label: d
+      label: l
       fill: color
       stroke: color
       icon: -> 'square'
@@ -316,19 +323,26 @@ Ember.Charts.VerticalBarComponent = Ember.Charts.ChartComponent.extend(
     # the origin line so that they do not overlap with it
     zeroDisplacement = 1
     yScale = @get 'yScale'
-    class: (d,i) -> "grouping-#{i}"
+    labels = @get 'individualBarLabels'
+
+    class: (d,i) ->
+      g = labels.indexOf d.label
+      "grouping-#{g}"
     'stroke-width': 0
     width: (d) => @get('groupWidth')
     x: null
     y: (d) => yScale(d.y1) + zeroDisplacement
     height: (d) -> yScale(d.y0) - yScale(d.y1)
-  .property 'yScale', 'groupWidth'
+  .property 'yScale', 'groupWidth', 'individualBarLabels'
 
   groupedBarAttrs: Ember.computed ->
     zeroDisplacement = 1
     yScale = @get 'yScale'
+    labels = @get 'individualBarLabels'
 
-    class: (d,i) -> "grouping-#{i}"
+    class: (d,i) ->
+      g = labels.indexOf d.label
+      "grouping-#{g}"
     'stroke-width': 0
     width: (d) => @get('barWidth')
     x: (d) => @get('xWithinGroupScale')(d.label)
@@ -339,7 +353,7 @@ Ember.Charts.VerticalBarComponent = Ember.Charts.ChartComponent.extend(
         yScale(d.value)
       else
         yScale(0) + zeroDisplacement
-  .property 'yScale', 'getSeriesColor', 'barWidth', 'xWithinGroupScale'
+  .property 'yScale', 'getSeriesColor', 'barWidth', 'xWithinGroupScale', 'individualBarLabels'
 
   labelAttrs: Ember.computed ->
     'stroke-width': 0
@@ -464,8 +478,9 @@ Ember.Charts.VerticalBarComponent = Ember.Charts.ChartComponent.extend(
 
     if @get('_shouldRotateLabels')
       rotateLabelDegrees = @get 'rotateLabelDegrees'
+      rotatedLabelLength = @get 'rotatedLabelLength'
       labelTrimmer = Ember.Charts.Helpers.LabelTrimmer.create
-        getLabelSize: (d) => @get 'rotatedLabelLength'
+        getLabelSize: (d) => rotatedLabelLength
         getLabelText: (d) -> d.group
       labels.call(labelTrimmer.get 'trim').attr
         'text-anchor': 'end'

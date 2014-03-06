@@ -6,7 +6,6 @@ Ember.Charts.PieComponent = Ember.Charts.ChartComponent.extend(
   # ----------------------------------------------------------------------------
 
   # Getters for formatting human-readable labels from provided data
-  formatValue: d3.format('.2s')
   formatValueLong: d3.format(',.r')
 
   # The smallest slices will be combined into an "Other" slice until no slice is
@@ -152,14 +151,35 @@ Ember.Charts.PieComponent = Ember.Charts.ChartComponent.extend(
 
   numSlices: Ember.computed.alias 'finishedData.length'
 
+  sliceAlignment: 'finish.north'
+
   # Offset slices so that the largest slice finishes at 12 o'clock
   startOffset: Ember.computed ->
-    data = @get 'finishedData'
-    sum = data.reduce((p, d) ->
-      d.percent + p
-    , 0)
-    _.last(data).percent / sum * 2 * Math.PI
-  .property 'finishedData'
+    offset = 0
+    [edge, direction] = @get('sliceAlignment').split(/\./)
+
+    console.log "Got edge #{edge} and direct #{direction}"
+
+    if edge isnt "start"
+      data = @get 'finishedData'
+      sum = data.reduce((p, d) ->
+        d.percent + p
+      , 0)
+      last = _.last(data).percent
+      if edge is "finish"
+        offset = (last / sum * 2 * Math.PI)
+      else if edge is "middle"
+        offset = (last / sum * Math.PI)
+
+    offset += switch direction
+      when "north" then 0
+      when "south" then Math.PI
+      when "east" then Math.PI / 2
+      when "west" then - Math.PI / 2
+      else 0
+
+    offset
+  .property 'finishedData', 'sliceAlignment'
 
   # Radius of the pie graphic, resized to fit the viewport.
   radius: Ember.computed ->
@@ -243,12 +263,15 @@ Ember.Charts.PieComponent = Ember.Charts.ChartComponent.extend(
     "translate(#{cx},#{cy})"
   .property 'marginLeft', 'marginTop', 'width', 'height'
 
+  donutHoleFraction: 0
+
   # Arc drawing function for pie with specified radius
   arc: Ember.computed ->
+    radius = @get 'radius'
     arc = d3.svg.arc()
-      .outerRadius(@get 'radius')
-      .innerRadius(0)
-  .property 'radius'
+      .outerRadius(radius)
+      .innerRadius(radius * @get 'donutHoleFraction')
+  .property 'radius', 'donutHoleFraction'
 
   # Pie layout function starting with the largest slice at zero degrees or
   # 12 oclock. Since the data is already sorted, this goes largest to smallest
@@ -376,7 +399,7 @@ Ember.Charts.PieComponent = Ember.Charts.ChartComponent.extend(
       .text((d) -> d.data.label)
       .attr(@get 'labelAttrs')
       .call(labelTrimmer.get 'trim')
-      .text((d) -> "#{this.textContent}, #{d.data.percent}%")
+      .text((d) -> "#{this.textContent}: #{d.data.percent}%")
 )
 
 Ember.Handlebars.helper('pie-chart', Ember.Charts.PieComponent)

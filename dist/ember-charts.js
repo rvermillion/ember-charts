@@ -74,21 +74,22 @@ Ember.Charts.Helpers = Ember.Namespace.create({
       getLabelText = this.get('getLabelText');
       return function(selection) {
         return selection.text(function(d) {
-          var bbW, charWidth, label, numChars, textLabelWidth;
-          bbW = this.getBBox().width;
+          var bbW, charWidth, label, labelSize, numChars;
           label = getLabelText(d, selection);
           if (!label) {
             return '';
           }
-          charWidth = bbW / label.length;
-          textLabelWidth = getLabelSize(d, selection) - 4 * charWidth;
-          numChars = Math.floor(textLabelWidth / charWidth);
-          if (numChars - 3 <= 0) {
-            return '...';
-          } else if (bbW > textLabelWidth) {
-            return label.slice(0, numChars - 3) + '...';
-          } else {
+          bbW = this.getBBox().width;
+          labelSize = getLabelSize(d, selection);
+          if (bbW < labelSize) {
             return label;
+          }
+          charWidth = bbW / label.length;
+          numChars = Math.floor(labelSize / charWidth);
+          if (numChars <= 3) {
+            return label.slice(0, 1) + '..';
+          } else {
+            return label.slice(0, numChars - 3) + '...';
           }
         });
       };
@@ -107,9 +108,47 @@ Ember.Charts.Colorable = Ember.Mixin.create({
   tint: 0.8,
   minimumTint: 0,
   maximumTint: 0.66,
-  colorScaleType: d3.scale.linear,
+  colorMode: "linear",
+  colorPalette: 'category',
+  colorScaleType: Ember.computed(function() {
+    switch (this.get('colorMode')) {
+      case "linear":
+        return d3.scale.linear;
+      case "palette":
+        return d3.scale.ordinal;
+      default:
+        return d3.scale.linear;
+    }
+  }).property('colorMode'),
   renderVars: ['colorScale'],
   colorRange: Ember.computed(function() {
+    var colorPalette, scale;
+    switch (this.get('colorMode')) {
+      case "linear":
+        return this.get('interpolatedColorRange');
+      case "palette":
+        colorPalette = this.get('colorPalette');
+        switch (colorPalette) {
+          case 'category':
+            return d3.scale.category20c().range();
+          case 'category20b':
+            return d3.scale.category20b().range();
+          case 'category20c':
+            return d3.scale.category20c().range();
+          default:
+            scale = d3.scale[colorPalette];
+            if (scale) {
+              return scale().range();
+            } else {
+              return this.get('interpolatedColorRange');
+            }
+        }
+        break;
+      default:
+        return this.get('interpolatedColorRange');
+    }
+  }).property('colorMode', 'colorPalette', 'interpolatedColorRange'),
+  interpolatedColorRange: Ember.computed(function() {
     var interpolate, maxTintRGB, minTintRGB, seedColor;
     seedColor = this.get('selectedSeedColor');
     interpolate = d3.interpolateRgb(seedColor, 'rgb(255,255,255)');
@@ -118,7 +157,10 @@ Ember.Charts.Colorable = Ember.Mixin.create({
     return [d3.rgb(minTintRGB), d3.rgb(maxTintRGB)];
   }).property('selectedSeedColor', 'minimumTint', 'maximumTint'),
   colorScale: Ember.computed(function() {
-    return this.get('colorScaleType')().range(this.get('colorRange'));
+    var colorScale, colorScaleType;
+    colorScaleType = this.get('colorScaleType');
+    colorScale = colorScaleType();
+    return colorScale.range(this.get('colorRange'));
   }).property('colorRange', 'colorScaleType'),
   secondaryMinimumTint: 0.4,
   secondaryMaximumTint: 0.85,
@@ -132,7 +174,9 @@ Ember.Charts.Colorable = Ember.Mixin.create({
     return [d3.rgb(minTintRGB), d3.rgb(maxTintRGB)];
   }).property('selectedSeedColor', 'secondaryMinimumTint', 'secondaryMaximumTint'),
   secondaryColorScale: Ember.computed(function() {
-    return this.get('secondaryColorScaleType')().range(this.get('secondaryColorRange'));
+    var secondaryColorScaleType;
+    secondaryColorScaleType = this.get('secondaryColorScaleType');
+    return secondaryColorScaleType().range(this.get('secondaryColorRange'));
   }).property('secondaryColorRange', 'secondaryColorScaleType'),
   leastTintedColor: Ember.computed(function() {
     return this.get('colorRange')[0];
@@ -149,7 +193,7 @@ Ember.Charts.Colorable = Ember.Mixin.create({
       if (numColorSeries === 1) {
         return _this.get('colorRange')[0];
       } else {
-        return _this.get('colorScale')(i / (numColorSeries - 1));
+        return _this.get('colorScale')(d.label);
       }
     };
   }).property('numColorSeries', 'colorRange', 'colorScale'),
@@ -403,6 +447,19 @@ Ember.Charts.HasTimeSeriesRule = Ember.Mixin.create({
 
 (function() {
 
+var findIndex;
+
+findIndex = function(ary, cb) {
+  var index, length;
+  index = -1;
+  length = ary ? ary.length : 0;
+  while (++index < length) {
+    if (cb(ary[index], index)) {
+      return index;
+    }
+  }
+  return -1;
+};
 
 Ember.Charts.TimeSeriesLabeler = Ember.Mixin.create({
   selectedInterval: 'M',
@@ -435,8 +492,8 @@ Ember.Charts.TimeSeriesLabeler = Ember.Mixin.create({
         return +x === +tick;
       };
     };
-    secondIndex = _.findIndex(allTicks, findTick(labelledTicks[1]));
-    firstIndex = _.findIndex(allTicks, findTick(labelledTicks[0]));
+    secondIndex = findIndex(allTicks, findTick(labelledTicks[1]));
+    firstIndex = findIndex(allTicks, findTick(labelledTicks[0]));
     return secondIndex - firstIndex - 1;
   }).property('xDomain', 'selectedInterval'),
   labelledTicks: Ember.computed(function() {
@@ -574,6 +631,11 @@ Ember.Charts.TimeSeriesLabeler = Ember.Mixin.create({
 
 (function() {
 
+var isFunction;
+
+isFunction = function(f) {
+  return typeof f === "function";
+};
 
 Ember.Charts.Legend = Ember.Mixin.create({
   legendTopPadding: 10,
@@ -582,7 +644,7 @@ Ember.Charts.Legend = Ember.Mixin.create({
   maxLegendItemWidth: 160,
   legendIconRadius: 9,
   legendLabelPadding: 10,
-  legendWidth: Ember.computed.alias('width'),
+  legendWidth: Ember.computed.defaultTo('width'),
   legendHeight: Ember.computed(function() {
     return this.get('numLegendRows') * this.get('legendItemHeight');
   }).property('numLegendRows', 'legendItemHeight'),
@@ -652,14 +714,14 @@ Ember.Charts.Legend = Ember.Mixin.create({
         }
       },
       fill: function(d, i) {
-        if (_.isFunction(d.fill)) {
+        if (isFunction(d.fill)) {
           return d.fill(d, i);
         } else {
           return d.fill;
         }
       },
       stroke: function(d, i) {
-        if (_.isFunction(d.stroke)) {
+        if (isFunction(d.stroke)) {
           return d.stroke(d, i);
         } else {
           return d.stroke;
@@ -669,7 +731,7 @@ Ember.Charts.Legend = Ember.Mixin.create({
         if (!d.width) {
           return 1.5;
         }
-        if (_.isFunction(d.width)) {
+        if (isFunction(d.width)) {
           return d.width(d, i);
         } else {
           return d.width;
@@ -913,6 +975,10 @@ Ember.Charts.ChartComponent = Ember.Component.extend(Ember.Charts.Colorable, Emb
   graphicRight: Ember.computed(function() {
     return this.get('graphicLeft') + this.get('graphicWidth');
   }).property('graphicLeft', 'graphicWidth'),
+  valueFormat: '.2s',
+  formatValue: Ember.computed(function() {
+    return d3.format(this.get('valueFormat'));
+  }).property('valueFormat'),
   hasNoData: Ember.computed(function() {
     return Ember.isEmpty(this.get('finishedData'));
   }).property('finishedData'),
@@ -1235,7 +1301,6 @@ Ember.Handlebars.helper('horizontal-bar-chart', Ember.Charts.HorizontalBarCompon
 
 Ember.Charts.PieComponent = Ember.Charts.ChartComponent.extend(Ember.Charts.PieLegend, Ember.Charts.FloatingTooltipMixin, {
   classNames: ['chart-pie'],
-  formatValue: d3.format('.2s'),
   formatValueLong: d3.format(',.r'),
   minSlicePercent: 5,
   maxNumberOfSlices: 8,
@@ -1362,14 +1427,40 @@ Ember.Charts.PieComponent = Ember.Charts.ChartComponent.extend(Ember.Charts.PieL
     return 0.3 * this.get('marginBottom');
   }).property('marginBottom'),
   numSlices: Ember.computed.alias('finishedData.length'),
+  sliceAlignment: 'finish.north',
   startOffset: Ember.computed(function() {
-    var data, sum;
-    data = this.get('finishedData');
-    sum = data.reduce(function(p, d) {
-      return d.percent + p;
-    }, 0);
-    return _.last(data).percent / sum * 2 * Math.PI;
-  }).property('finishedData'),
+    var data, direction, edge, last, offset, sum, _ref;
+    offset = 0;
+    _ref = this.get('sliceAlignment').split(/\./), edge = _ref[0], direction = _ref[1];
+    console.log("Got edge " + edge + " and direct " + direction);
+    if (edge !== "start") {
+      data = this.get('finishedData');
+      sum = data.reduce(function(p, d) {
+        return d.percent + p;
+      }, 0);
+      last = _.last(data).percent;
+      if (edge === "finish") {
+        offset = last / sum * 2 * Math.PI;
+      } else if (edge === "middle") {
+        offset = last / sum * Math.PI;
+      }
+    }
+    offset += (function() {
+      switch (direction) {
+        case "north":
+          return 0;
+        case "south":
+          return Math.PI;
+        case "east":
+          return Math.PI / 2;
+        case "west":
+          return -Math.PI / 2;
+        default:
+          return 0;
+      }
+    })();
+    return offset;
+  }).property('finishedData', 'sliceAlignment'),
   radius: Ember.computed(function() {
     return d3.min([this.get('maxRadius'), this.get('width') / 2, this.get('height') / 2]);
   }).property('maxRadius', 'width', 'height'),
@@ -1430,10 +1521,12 @@ Ember.Charts.PieComponent = Ember.Charts.ChartComponent.extend(Ember.Charts.PieL
     cy = this.get('marginTop') + this.get('height') / 2;
     return "translate(" + cx + "," + cy + ")";
   }).property('marginLeft', 'marginTop', 'width', 'height'),
+  donutHoleFraction: 0,
   arc: Ember.computed(function() {
-    var arc;
-    return arc = d3.svg.arc().outerRadius(this.get('radius')).innerRadius(0);
-  }).property('radius'),
+    var arc, radius;
+    radius = this.get('radius');
+    return arc = d3.svg.arc().outerRadius(radius).innerRadius(radius * this.get('donutHoleFraction'));
+  }).property('radius', 'donutHoleFraction'),
   pie: Ember.computed(function() {
     return d3.layout.pie().startAngle(this.get('startOffset')).endAngle(this.get('startOffset') + Math.PI * 2).sort(null).value(function(d) {
       return d.percent;
@@ -1558,7 +1651,7 @@ Ember.Charts.PieComponent = Ember.Charts.ChartComponent.extend(Ember.Charts.PieL
     return groups.select('text.data').text(function(d) {
       return d.data.label;
     }).attr(this.get('labelAttrs')).call(labelTrimmer.get('trim')).text(function(d) {
-      return "" + this.textContent + ", " + d.data.percent + "%";
+      return "" + this.textContent + ": " + d.data.percent + "%";
     });
   }
 });
@@ -1573,7 +1666,6 @@ Ember.Handlebars.helper('pie-chart', Ember.Charts.PieComponent);
 
 Ember.Charts.VerticalBarComponent = Ember.Charts.ChartComponent.extend(Ember.Charts.Legend, Ember.Charts.FloatingTooltipMixin, Ember.Charts.AxesMixin, {
   classNames: ['chart-vertical-bar'],
-  formatValue: d3.format('.2s'),
   formatValueLong: d3.format(',.r'),
   ungroupedSeriesName: 'Other',
   stackBars: false,
@@ -1613,33 +1705,36 @@ Ember.Charts.VerticalBarComponent = Ember.Charts.ChartComponent.extend(Ember.Cha
     return this.get('groupNames.length') > 1;
   }).property('groupNames.length'),
   finishedData: Ember.computed(function() {
-    var d, groupName, stackedValues, values, y0, _i, _len, _ref, _ref1, _results, _results1;
+    var d, g, groupedData, groups, stackedValues, values, y0, _i, _j, _len, _len1, _ref, _ref1, _results, _results1;
     if (this.get('isGrouped')) {
       if (Ember.isEmpty(this.get('groupedData'))) {
         return [];
       }
-      _ref = this.get('groupedData');
+      groupedData = this.get('groupedData');
+      groups = d3.keys(groupedData);
+      y0 = 0;
+      _ref = groups.sort(d3.ascending);
       _results = [];
-      for (groupName in _ref) {
-        values = _ref[groupName];
-        y0 = 0;
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        g = _ref[_i];
+        values = groupedData[g];
         stackedValues = (function() {
-          var _i, _len, _results1;
+          var _j, _len1, _results1;
           _results1 = [];
-          for (_i = 0, _len = values.length; _i < _len; _i++) {
-            d = values[_i];
+          for (_j = 0, _len1 = values.length; _j < _len1; _j++) {
+            d = values[_j];
             _results1.push({
               y0: y0,
               y1: y0 += Math.max(d.value, 0),
               value: d.value,
-              group: d.group,
+              group: g,
               label: d.label
             });
           }
           return _results1;
         })();
         _results.push({
-          group: groupName,
+          group: g,
           values: values,
           stackedValues: stackedValues,
           totalValue: y0
@@ -1652,11 +1747,11 @@ Ember.Charts.VerticalBarComponent = Ember.Charts.ChartComponent.extend(Ember.Cha
       }
       y0 = 0;
       stackedValues = (function() {
-        var _i, _len, _ref1, _results1;
+        var _j, _len1, _ref1, _results1;
         _ref1 = this.get('data');
         _results1 = [];
-        for (_i = 0, _len = _ref1.length; _i < _len; _i++) {
-          d = _ref1[_i];
+        for (_j = 0, _len1 = _ref1.length; _j < _len1; _j++) {
+          d = _ref1[_j];
           _results1.push({
             y0: y0,
             y1: y0 += Math.max(d.value, 0)
@@ -1678,8 +1773,8 @@ Ember.Charts.VerticalBarComponent = Ember.Charts.ChartComponent.extend(Ember.Cha
       }
       _ref1 = this.get('data');
       _results1 = [];
-      for (_i = 0, _len = _ref1.length; _i < _len; _i++) {
-        d = _ref1[_i];
+      for (_j = 0, _len1 = _ref1.length; _j < _len1; _j++) {
+        d = _ref1[_j];
         _results1.push({
           group: d.label,
           values: [d]
@@ -1702,17 +1797,16 @@ Ember.Charts.VerticalBarComponent = Ember.Charts.ChartComponent.extend(Ember.Cha
     return this.get('height') - this.get('legendHeight') - this.get('legendChartPadding');
   }).property('height', 'legendHeight', 'legendChartPadding'),
   yDomain: Ember.computed(function() {
-    var finishedData, max, maxOfGroups, maxOfStacks, min, minOfGroups, minOfStacks;
+    var accessor, finishedData, max, maxOfGroups, maxOfStacks, min, minOfGroups, minOfStacks;
     finishedData = this.get('finishedData');
+    accessor = function(dd) {
+      return dd.value;
+    };
     minOfGroups = d3.min(finishedData, function(d) {
-      return _.min(d.values.map(function(dd) {
-        return dd.value;
-      }));
+      return d3.min(d.values, accessor);
     });
     maxOfGroups = d3.max(finishedData, function(d) {
-      return _.max(d.values.map(function(dd) {
-        return dd.value;
-      }));
+      return d3.max(d.values, accessor);
     });
     maxOfStacks = d3.max(finishedData, function(d) {
       return d.totalValue;
@@ -1743,11 +1837,19 @@ Ember.Charts.VerticalBarComponent = Ember.Charts.ChartComponent.extend(Ember.Cha
     return d3.scale.linear().domain(this.get('yDomain')).range([this.get('graphicTop') + this.get('graphicHeight'), this.get('graphicTop')]).nice(this.get('numYTicks'));
   }).property('graphicTop', 'graphicHeight', 'yDomain', 'numYTicks'),
   individualBarLabels: Ember.computed(function() {
-    var groups;
-    groups = _.values(this.get('groupedData')).map(function(g) {
-      return _.pluck(g, 'label');
-    });
-    return _.uniq(_.flatten(groups));
+    var groupName, labels, v, values, _i, _len, _ref;
+    labels = d3.set();
+    _ref = this.get('groupedData');
+    for (groupName in _ref) {
+      values = _ref[groupName];
+      for (_i = 0, _len = values.length; _i < _len; _i++) {
+        v = values[_i];
+        if (v && v.label) {
+          labels.add(v.label);
+        }
+      }
+    }
+    return labels.values().sort(d3.ascending);
   }).property('groupedData.@each'),
   xBetweenGroupDomain: Ember.computed.alias('groupNames'),
   xWithinGroupDomain: Ember.computed.alias('individualBarLabels'),
@@ -1781,11 +1883,14 @@ Ember.Charts.VerticalBarComponent = Ember.Charts.ChartComponent.extend(Ember.Cha
   legendItems: Ember.computed(function() {
     var getSeriesColor;
     getSeriesColor = this.get('getSeriesColor');
-    return this.get('individualBarLabels').map(function(d, i) {
-      var color;
+    return this.get('individualBarLabels').map(function(l, i) {
+      var color, d;
+      d = {
+        label: l
+      };
       color = getSeriesColor(d, i);
       return {
-        label: d,
+        label: l,
         fill: color,
         stroke: color,
         icon: function() {
@@ -1840,13 +1945,16 @@ Ember.Charts.VerticalBarComponent = Ember.Charts.ChartComponent.extend(Ember.Cha
     };
   }).property('graphicLeft', 'graphicTop', 'xBetweenGroupScale'),
   stackedBarAttrs: Ember.computed(function() {
-    var yScale, zeroDisplacement,
+    var labels, yScale, zeroDisplacement,
       _this = this;
     zeroDisplacement = 1;
     yScale = this.get('yScale');
+    labels = this.get('individualBarLabels');
     return {
       "class": function(d, i) {
-        return "grouping-" + i;
+        var g;
+        g = labels.indexOf(d.label);
+        return "grouping-" + g;
       },
       'stroke-width': 0,
       width: function(d) {
@@ -1860,15 +1968,18 @@ Ember.Charts.VerticalBarComponent = Ember.Charts.ChartComponent.extend(Ember.Cha
         return yScale(d.y0) - yScale(d.y1);
       }
     };
-  }).property('yScale', 'groupWidth'),
+  }).property('yScale', 'groupWidth', 'individualBarLabels'),
   groupedBarAttrs: Ember.computed(function() {
-    var yScale, zeroDisplacement,
+    var labels, yScale, zeroDisplacement,
       _this = this;
     zeroDisplacement = 1;
     yScale = this.get('yScale');
+    labels = this.get('individualBarLabels');
     return {
       "class": function(d, i) {
-        return "grouping-" + i;
+        var g;
+        g = labels.indexOf(d.label);
+        return "grouping-" + g;
       },
       'stroke-width': 0,
       width: function(d) {
@@ -1888,7 +1999,7 @@ Ember.Charts.VerticalBarComponent = Ember.Charts.ChartComponent.extend(Ember.Cha
         }
       }
     };
-  }).property('yScale', 'getSeriesColor', 'barWidth', 'xWithinGroupScale'),
+  }).property('yScale', 'getSeriesColor', 'barWidth', 'xWithinGroupScale', 'individualBarLabels'),
   labelAttrs: Ember.computed(function() {
     var _this = this;
     return {
@@ -1994,7 +2105,7 @@ Ember.Charts.VerticalBarComponent = Ember.Charts.ChartComponent.extend(Ember.Cha
     return bars.exit().remove();
   },
   updateLayout: function() {
-    var groups, labelTrimmer, labels, maxLabelWidth, rotateLabelDegrees,
+    var groups, labelTrimmer, labels, maxLabelWidth, rotateLabelDegrees, rotatedLabelLength,
       _this = this;
     groups = this.get('groups');
     labels = groups.select('.groupLabel text').attr('transform', null).text(function(d) {
@@ -2003,9 +2114,10 @@ Ember.Charts.VerticalBarComponent = Ember.Charts.ChartComponent.extend(Ember.Cha
     this.setRotateLabels();
     if (this.get('_shouldRotateLabels')) {
       rotateLabelDegrees = this.get('rotateLabelDegrees');
+      rotatedLabelLength = this.get('rotatedLabelLength');
       labelTrimmer = Ember.Charts.Helpers.LabelTrimmer.create({
         getLabelSize: function(d) {
-          return _this.get('rotatedLabelLength');
+          return rotatedLabelLength;
         },
         getLabelText: function(d) {
           return d.group;
@@ -3151,7 +3263,6 @@ Ember.Charts.BubbleComponent = Ember.Charts.ChartComponent.extend(Ember.Charts.F
       return -Math.pow(d.radius, 2.0) / 8;
     };
   }),
-  formatValue: d3.format('.2s'),
   formatValueLong: d3.format(',.r'),
   showDetails: Ember.computed(function() {
     var _this = this;

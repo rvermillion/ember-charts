@@ -20,22 +20,22 @@ Ember.Charts.Helpers = Ember.Namespace.create
     # Goes back over a d3 selection of text labels, truncating any that are too
     # long. This uses the SVG API for text labels, and assumes each character is
     # the same width, removing a proportional number of characters to the length
-    # of the label
+    # of the label. If less than three characters can fit it adds the first two
+    # of the label followed by '..'.
     trim: Ember.computed ->
       getLabelSize = @get 'getLabelSize'
       getLabelText = @get 'getLabelText'
       (selection) ->
         selection.text (d) ->
-          bbW = @getBBox().width
           label = getLabelText(d, selection)
           return '' unless label
+          bbW = @getBBox().width
+          labelSize = getLabelSize(d, selection)
+          return label if bbW < labelSize
           charWidth = bbW / label.length
-          textLabelWidth = getLabelSize(d, selection) - 4 * charWidth
-          numChars = Math.floor textLabelWidth / charWidth
-          if numChars - 3 <= 0
-              '...'
-            else if bbW > textLabelWidth
-              label[0...(numChars - 3)] + '...'
-            else
-              label
+          numChars = Math.floor labelSize / charWidth
+          if numChars <= 3
+            label[0...1] + '..'
+          else
+            label[0...(numChars - 3)] + '...'
     .property 'getLabelSize', 'getLabelText'
